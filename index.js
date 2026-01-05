@@ -26,8 +26,8 @@ app.post("/x402/solana/schedoputer", (req, res) => {
           network: "solana",
           maxAmountRequired: "10000", // $0.01 USDC (6 decimals)
           asset: USDC_SOLANA,
-          payTo: PAY_TO,
-          resource: "https://YOUR_RENDER_URL/x402/solana/schedoputer"
+          payTo: "4n9vJHPezhghfF6NCTSPgTbkGoV7EsQYtC2hfaKfrM8U" ,
+          resource: "https://schedoputer.onrender.com/x402/solana/schedoputer"
         }
       ]
     });
