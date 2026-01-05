@@ -1,50 +1,101 @@
 import express from "express";
+import crypto from "crypto";
 
 const app = express();
 app.use(express.json());
 
-// ===== CONFIG =====
-const PORT = process.env.PORT || 3000;
+const jobs = new Map();
 
-// Replace with YOUR Solana wallet
-const PAY_TO = "YOUR_SOLANA_WALLET_ADDRESS";
+const PRICE = 10000; // 0.01 USDC (6 decimals)
 
-// USDC on Solana
-const USDC_SOLANA = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-
-// ===== x402 ENDPOINT =====
 app.post("/x402/solana/schedoputer", (req, res) => {
-  // IMPORTANT: payment check must come FIRST
-  const paymentHeader = req.headers["x-payment"];
-
-  if (!paymentHeader) {
+  // 1️⃣ x402 discovery
+  if (!req.headers["x-payment"]) {
     return res.status(402).json({
       x402Version: 1,
-      accepts: [
-        {
-          scheme: "exact",
-          network: "solana",
-          maxAmountRequired: "10000", // $0.01 USDC (6 decimals)
-          asset: USDC_SOLANA,
-          payTo: "4n9vJHPezhghfF6NCTSPgTbkGoV7EsQYtC2hfaKfrM8U" ,
-          resource: "https://schedoputer.onrender.com/x402/solana/schedoputer"
-        }
-      ]
+      accepts: [{
+        scheme: "exact",
+        network: "solana",
+        maxAmountRequired: String(PRICE),
+        asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        payTo: "4n9vJHPezhghfF6NCTSPgTbkGoV7EsQYtC2hfaKfrM8U",
+        resource: "https://schedoputer.onrender.com/x402/solana/schedoputer"
+      }]
     });
   }
 
-  // For now: just acknowledge payment
-  return res.json({
-    success: true,
-    message: "Schedoputer payment accepted (logic coming next)"
-  });
+  const { action, scheduleAfterMinutes, jobPlan, jobRef } = req.body;
+
+  // 2️⃣ Handle actions
+  if (action === "schedule") {
+    if (!scheduleAfterMinutes || !jobPlan) {
+      return res.status(400).json({ error: "Missing fields" });
+    }
+
+    const id = crypto.randomUUID();
+    const scheduledFor = new Date(
+      Date.now() + scheduleAfterMinutes * 60 * 1000
+    );
+
+    jobs.set(id, {
+      id,
+      state: "scheduled",
+      scheduledFor,
+      jobPlan
+    });
+
+    return res.json({
+      success: true,
+      schedoputerJobId: id,
+      state: "scheduled",
+      scheduledFor,
+      costCharged: 0.01
+    });
+  }
+
+  if (action === "undo") {
+    const job = jobs.get(jobRef);
+    if (!job || job.state !== "scheduled") {
+      return res.status(400).json({ error: "Invalid job" });
+    }
+
+    job.state = "cancelled";
+
+    return res.json({
+      success: true,
+      schedoputerJobId: jobRef,
+      state: "cancelled",
+      costCharged: 0.01
+    });
+  }
+
+  if (action === "modify") {
+    const job = jobs.get(jobRef);
+    if (!job || job.state !== "scheduled") {
+      return res.status(400).json({ error: "Invalid job" });
+    }
+
+    if (scheduleAfterMinutes) {
+      job.scheduledFor = new Date(
+        Date.now() + scheduleAfterMinutes * 60 * 1000
+      );
+    }
+
+    if (jobPlan) {
+      job.jobPlan = jobPlan;
+    }
+
+    return res.json({
+      success: true,
+      schedoputerJobId: jobRef,
+      state: "modified",
+      scheduledFor: job.scheduledFor,
+      costCharged: 0.01
+    });
+  }
+
+  res.status(400).json({ error: "Unknown action" });
 });
 
-// ===== HEALTH CHECK =====
-app.get("/", (req, res) => {
-  res.send("Schedoputer is alive");
-});
-
-app.listen(PORT, () => {
-  console.log(`Schedoputer running on port ${PORT}`);
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log("Schedoputer running"));
